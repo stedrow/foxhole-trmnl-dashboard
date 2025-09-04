@@ -102,16 +102,18 @@ class DataUpdater {
       }
 
       console.log(`Data update complete. Updated ${totalUpdates} towns.`);
-      
+
       // If we have a Terminus poster, trigger it to post fresh data
       if (this.terminusPoster) {
-        console.log('🔄 Triggering Terminus poster with fresh data...');
+        console.log("🔄 Triggering Terminus poster with fresh data...");
         try {
           // Get the fresh conquer status and pass it to the poster
           const freshConquerStatus = this.getConquerStatus();
-          await this.terminusPoster.generateAndPostWithFreshData(freshConquerStatus);
+          await this.terminusPoster.generateAndPostWithFreshData(
+            freshConquerStatus,
+          );
         } catch (error) {
-          console.error('Error triggering Terminus poster:', error);
+          console.error("Error triggering Terminus poster:", error);
         }
       }
     } catch (error) {
