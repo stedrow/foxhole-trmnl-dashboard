@@ -1,0 +1,15 @@
+services:
+  foxhole-svg:
+    build: .
+    image: foxhole-svg
+    container_name: foxhole-svg
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./output:/app/output
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    restart: unless-stopped
+    command: ["node", "src/server-with-tracking.js"]

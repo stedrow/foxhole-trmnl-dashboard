@@ -1,0 +1,20 @@
+{
+  "name": "foxhole-svg-generator",
+  "version": "1.0.0",
+  "description": "Generate Foxhole maps as SVG for e-paper displays",
+  "main": "src/generate-svg.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/generate-svg.js",
+    "dev": "node --watch src/generate-svg.js",
+    "server": "node src/server-with-tracking.js"
+  },
+  "dependencies": {
+    "@turf/turf": "^7.2.0",
+    "better-sqlite3": "^8.7.0",
+    "express": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
