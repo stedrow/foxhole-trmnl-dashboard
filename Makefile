@@ -64,6 +64,13 @@ service-logs: ## Show service logs
 service-down: ## Stop and remove containers
 	docker-compose down
 
+# Terminus Poster Service (Integrated)
+.PHONY: terminus-test
+terminus-test: ## Test Terminus poster service (run once)
+	@echo "🧪 Testing Terminus poster service..."
+	@docker-compose run --rm foxhole-svg node src/terminus-poster.js || \
+		(echo "❌ Test failed. Check your .env file and Terminus configuration" && exit 1)
+
 # SVG Generation
 .PHONY: generate
 generate: ## Generate and save SVG map via API

@@ -387,10 +387,35 @@ app.get("/view-epaper-svg", async (req, res) => {
 
 // Start the web server
 app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+  console.log(`🚀 Foxhole SVG Generator server running on port ${port}`);
+  console.log(`📊 Web interface: http://localhost:${port}`);
+  console.log(`🔍 Health check: http://localhost:${port}/health`);
   console.log(
-    `Tracking service: ${dataUpdater.isRunning ? "running" : "stopped"}`,
+    `📈 Tracking service: ${dataUpdater.isRunning ? "running" : "stopped"}`,
   );
+  
+  // Start the Terminus poster service if environment variables are configured
+  if (process.env.TERMINUS_URL && process.env.DEVICE_API_KEY) {
+    console.log('🌐 Starting Terminus poster service...');
+    import('./terminus-poster.js').then(module => {
+      const TerminusPoster = module.default;
+      const poster = new TerminusPoster();
+      
+      // Connect the data updater to the Terminus poster
+      dataUpdater.setTerminusPoster(poster);
+      
+      // Start the poster service
+      poster.start().catch(error => {
+        console.error('❌ Failed to start Terminus poster service:', error);
+      });
+      
+      console.log('✅ Terminus poster connected to data updater');
+    }).catch(error => {
+      console.error('❌ Failed to import Terminus poster:', error);
+    });
+  } else {
+    console.log('⚠️  Terminus poster service not started - missing TERMINUS_URL or DEVICE_API_KEY');
+  }
 });
 
 // Graceful shutdown

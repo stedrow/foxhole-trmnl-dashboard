@@ -8,6 +8,7 @@ class DataUpdater {
     this.tracker = new TownTracker();
     this.isRunning = false;
     this.updateInterval = 5 * 60 * 1000; // 5 minutes
+    this.terminusPoster = null; // Will be set by the server
   }
 
   async start() {
@@ -59,13 +60,11 @@ class DataUpdater {
       for (const region of regions) {
         try {
           const regionName = region.id;
-          console.log(`Processing region: ${regionName}`);
 
           // Get dynamic data for this region
           const dynamicData = await this.warApi.getDynamicMap(regionName);
 
           if (!dynamicData || !dynamicData.mapItems) {
-            console.log(`No dynamic data for region ${regionName}`);
             continue;
           }
 
@@ -103,9 +102,26 @@ class DataUpdater {
       }
 
       console.log(`Data update complete. Updated ${totalUpdates} towns.`);
+      
+      // If we have a Terminus poster, trigger it to post fresh data
+      if (this.terminusPoster) {
+        console.log('🔄 Triggering Terminus poster with fresh data...');
+        try {
+          // Get the fresh conquer status and pass it to the poster
+          const freshConquerStatus = this.getConquerStatus();
+          await this.terminusPoster.generateAndPostWithFreshData(freshConquerStatus);
+        } catch (error) {
+          console.error('Error triggering Terminus poster:', error);
+        }
+      }
     } catch (error) {
       console.error("Error updating data:", error);
     }
+  }
+
+  // Set the Terminus poster instance
+  setTerminusPoster(poster) {
+    this.terminusPoster = poster;
   }
 
   // Get current conquerStatus data
