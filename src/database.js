@@ -1,13 +1,13 @@
-import Database from 'better-sqlite3';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import Database from "better-sqlite3";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 class TownTracker {
   constructor() {
-    this.dbPath = join(__dirname, '..', 'data', 'towns.db');
+    this.dbPath = join(__dirname, "..", "data", "towns.db");
     this.db = new Database(this.dbPath);
     this.initDatabase();
   }
@@ -36,7 +36,7 @@ class TownTracker {
       CREATE INDEX IF NOT EXISTS idx_towns_coords ON towns(x, y);
     `);
 
-    console.log('Database initialized');
+    console.log("Database initialized");
   }
 
   // Generate a unique ID for a town based on its coordinates and icon type
@@ -51,10 +51,10 @@ class TownTracker {
 
     // First, get the current town data if it exists
     const currentTown = this.getTownControl(iconType, x, y);
-    
+
     let lastTeam = null;
     let lastChange = now;
-    
+
     if (currentTown) {
       // If team has changed, update lastTeam and lastChange
       if (currentTown.currentTeam !== team) {
@@ -73,10 +73,23 @@ class TownTracker {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const result = stmt.run(townId, iconType, x, y, region, team, lastTeam, lastChange, notes, now);
-    
+    const result = stmt.run(
+      townId,
+      iconType,
+      x,
+      y,
+      region,
+      team,
+      lastTeam,
+      lastChange,
+      notes,
+      now,
+    );
+
     if (result.changes > 0) {
-      console.log(`Updated town ${townId}: team=${team}, lastChange=${new Date(now).toISOString()}`);
+      console.log(
+        `Updated town ${townId}: team=${team}, lastChange=${new Date(now).toISOString()}`,
+      );
     }
 
     return result;
@@ -85,11 +98,11 @@ class TownTracker {
   // Get town control status
   getTownControl(iconType, x, y) {
     const townId = this.generateTownId(iconType, x, y);
-    
+
     const stmt = this.db.prepare(`
       SELECT * FROM towns WHERE id = ?
     `);
-    
+
     return stmt.get(townId);
   }
 
@@ -98,7 +111,7 @@ class TownTracker {
     const stmt = this.db.prepare(`
       SELECT * FROM towns WHERE region = ?
     `);
-    
+
     return stmt.all(region);
   }
 
@@ -107,7 +120,7 @@ class TownTracker {
     const stmt = this.db.prepare(`
       SELECT * FROM towns ORDER BY region, x, y
     `);
-    
+
     return stmt.all();
   }
 
@@ -116,7 +129,7 @@ class TownTracker {
     const towns = this.getAllTowns();
     const features = {};
 
-    towns.forEach(town => {
+    towns.forEach((town) => {
       features[town.id] = {
         team: town.currentTeam,
         lastChange: town.lastChange,
@@ -125,7 +138,7 @@ class TownTracker {
         iconType: town.iconType,
         x: town.x,
         y: town.y,
-        region: town.region
+        region: town.region,
       };
     });
 
@@ -133,21 +146,21 @@ class TownTracker {
       version: Date.now().toString(),
       features: features,
       warNumber: 127, // This should be dynamic
-      full: true
+      full: true,
     };
   }
 
   // Clean up old records (optional)
   cleanupOldRecords(daysToKeep = 30) {
-    const cutoffTime = Date.now() - (daysToKeep * 24 * 60 * 60 * 1000);
-    
+    const cutoffTime = Date.now() - daysToKeep * 24 * 60 * 60 * 1000;
+
     const stmt = this.db.prepare(`
       DELETE FROM towns WHERE updated_at < ?
     `);
-    
+
     const result = stmt.run(cutoffTime);
     console.log(`Cleaned up ${result.changes} old records`);
-    
+
     return result;
   }
 

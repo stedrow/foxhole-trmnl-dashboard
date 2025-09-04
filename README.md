@@ -7,10 +7,21 @@ A lightweight Docker container that generates SVG maps of Foxhole with accurate 
 - **Accurate Sub-region Coloring**: Matches warden.express color logic with proper alpha channels
 - **Town Control Tracking**: SQLite database tracks real `lastChange` timestamps
 - **Live Data Updates**: Background service updates every 5 minutes
-- **E-paper Optimized**: High contrast colors and clear typography
+- **E-paper Optimized**: High contrast colors and clear typography for small displays
 - **Single Container**: Everything runs in one Docker container
-- **Web Interface**: Easy-to-use UI for map generation
+- **Web Interface**: Easy-to-use UI for map generation and monitoring
 - **API Endpoints**: Programmatic access to all features
+- **Terminus Integration**: Automatic posting to Terminus server with fresh data
+- **Recent Captures Display**: Live tracking of town captures with hex and region names
+
+## Why This Project?
+
+- **🎯 E-Paper Focused**: Optimized specifically for small, grayscale displays
+- **🔄 Always Fresh Data**: SVG generation automatically uses the latest town control information
+- **🚀 Zero Maintenance**: Runs automatically with no manual intervention required
+- **📱 Terminus Ready**: Seamlessly integrates with your Terminus server
+- **🏗️ Single Container**: Simple deployment with everything in one place
+- **📊 Real-Time Monitoring**: Web interface shows live war status and captures
 
 ## Quick Start
 
@@ -55,27 +66,16 @@ foxhole-svg Container:
 ├── Tracking Service (background)
 │   ├── Updates every 5 minutes
 │   ├── SQLite database
-│   └── Town control tracking
-└── SVG Generation (on-demand)
-    ├── GET /api/generate-svg (download)
-    └── POST /api/generate-svg (save to file)
-```
-
-### Database Schema
-```sql
-CREATE TABLE towns (
-  id TEXT PRIMARY KEY,           -- Unique town ID
-  iconType TEXT NOT NULL,        -- Town type (TownHall, RelicBase, etc.)
-  x REAL NOT NULL,               -- X coordinate
-  y REAL NOT NULL,               -- Y coordinate
-  region TEXT NOT NULL,          -- Region name
-  currentTeam TEXT NOT NULL,     -- Current controlling team
-  lastTeam TEXT,                 -- Previous team
-  lastChange INTEGER NOT NULL,   -- Timestamp of last team change
-  notes TEXT,                    -- Town name/notes
-  created_at INTEGER,            -- Record creation time
-  updated_at INTEGER             -- Last update time
-);
+│   ├── Town control tracking
+│   └── Triggers Terminus poster
+├── SVG Generation (on-demand)
+│   ├── GET /api/generate-epaper-svg (download)
+│   └── POST /api/generate-epaper-svg (save to file)
+└── Terminus Poster Service
+    ├── Posts to Terminus server
+    ├── Automatically triggered by data updates
+    ├── Uses fresh data from tracking service
+    └── Creates HTML dashboard with SVG
 ```
 
 ### Data Flow
@@ -83,8 +83,10 @@ CREATE TABLE towns (
 2. Fetches dynamic map data from Foxhole API
 3. Compares current team with stored team
 4. Updates `lastChange` timestamp when team changes
-5. **SVG Generator** reads tracked data
-6. Applies alpha channel variation based on `lastChange`
+5. **Automatically triggers Terminus poster** with fresh data
+6. **SVG Generator** reads tracked data
+7. Applies alpha channel variation based on `lastChange`
+8. **Terminus poster** creates HTML dashboard and posts to server
 
 ## Commands
 
@@ -104,9 +106,6 @@ make service-logs
 
 # Check health status
 make status
-
-# Show tracking data
-make conquer-status
 ```
 
 ### SVG Generation
@@ -119,9 +118,6 @@ make download
 
 # Quick generation
 make svg
-
-# Web interface
-# Visit http://localhost:3000
 ```
 
 ### Development
@@ -134,9 +130,6 @@ make dev
 
 # Test container build
 make test
-
-# Health check
-make health-check
 ```
 
 ### File Operations
@@ -163,44 +156,116 @@ make clean
 make clean-all
 ```
 
+### Terminus Server Integration
+```bash
+# Test Terminus poster service (run once)
+make terminus-test
+```
+
+**Note**: The Terminus poster service is now integrated into the main service and starts automatically when you run `make service`.
+
 ## API Endpoints
 
 When running the web server:
 
 - `GET /` - Web interface
 - `GET /health` - Health check
-- `POST /api/generate-svg` - Generate and save SVG map
-- `GET /api/generate-svg` - Download SVG map
+- `POST /api/generate-epaper-svg` - Generate and save e-paper SVG map
+- `GET /api/generate-epaper-svg` - Download e-paper SVG map
 - `GET /api/conquerStatus` - Get current tracking data
+- `GET /api/recent-captures` - Get enriched recent captures data
+
+## Terminus Server Integration
+
+The project automatically posts to your Terminus server whenever fresh Foxhole data is available.
+
+### How It Works
+
+- **Automatic Triggering**: Terminus poster runs automatically after each data update
+- **Fresh Data Guaranteed**: SVG always uses the latest town control information
+- **Perfect Sync**: No manual scheduling - follows the data updater's 5-minute cycle
+- **HTML Dashboard**: Creates beautiful HTML pages with embedded SVG maps
+
+### Setup
+
+1. **Create environment file:**
+   ```bash
+   cp env.example .env
+   # Edit .env with your actual Terminus server details
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Start the main service (includes Terminus poster):**
+   ```bash
+   make service
+   # or
+   docker-compose up -d
+   ```
+
+### What It Does
+
+- **Waits for fresh data** from the tracking service
+- **Generates e-paper SVG** with current war status
+- **Creates HTML dashboard** with embedded SVG and war statistics
+- **Posts to Terminus server** via REST API
+- **Updates existing screen** or creates new one
+- **Handles graceful shutdown** and error recovery
+
+### Environment Variables
+
+Create a `.env` file with:
+```bash
+TERMINUS_URL=https://your-terminus-server.com
+DEVICE_API_KEY=your_device_api_key_here
+PORT=3000
+```
+
+### Testing
+
+Test the Terminus poster independently:
+```bash
+make terminus-test
+```
 
 ## Usage Examples
 
-### For TRMNL E-Paper Display
+### For E-Paper Display
 
-1. Generate the SVG:
+1. Generate the e-paper SVG:
 ```bash
-make generate
+make generate-epaper
 ```
 
-2. Download the map:
+2. Download the e-paper map:
 ```bash
-make download
+make download-epaper
 ```
 
-3. The SVG is optimized for e-paper displays with:
-   - High contrast colors
+3. The e-paper SVG is optimized for small displays with:
+   - High contrast grayscale colors
    - Clear typography
    - Simplified graphics
-   - Appropriate sizing for small screens
+   - 800x480 resolution for e-paper devices
+   - Recent captures display at the bottom
+
+### Web Interface
+
+Access the web interface at `http://localhost:3000` to:
+- View real-time town control data
+- Generate and download SVG maps
+- Monitor recent captures with hex and region names
+- Check service health status
 
 ### Automated Updates
 
-Set up a cron job or scheduled task to generate updated maps:
-
-```bash
-# Generate map every 30 minutes
-*/30 * * * * make generate
-```
+The system automatically updates every 5 minutes:
+- **Data tracking service** fetches fresh Foxhole data
+- **Terminus poster** automatically generates and posts updated maps
+- **No manual intervention** required
 
 ## Configuration
 
@@ -213,12 +278,20 @@ this.updateInterval = 5 * 60 * 1000; // 5 minutes
 ### Database Location
 The SQLite database is stored in `data/towns.db`
 
-### Data Retention
-Old records are automatically cleaned up after 30 days by default.
-
 ### Environment Variables
 - `PORT` - Server port (default: 3000)
 - `NODE_ENV` - Environment mode (default: production)
+- `TERMINUS_URL` - Your Terminus server URL
+- `DEVICE_API_KEY` - Your Terminus device API key
+
+### Recent Captures Display
+
+The web interface now shows enriched recent captures with:
+- **Hex Names**: Converted from region names (e.g., "Basin Sionnach", "Callums Cape")
+- **Town Names**: From the tracking database or icon types
+- **Capture Times**: Time since each town was captured
+- **Team Information**: Colonial vs Warden captures
+- **Live Updates**: Refreshes automatically with new data
 
 ## Alpha Channel Logic
 
@@ -240,19 +313,22 @@ This creates visual variation where:
 ## Output
 
 SVG files are saved to the `output/` directory with:
-- Timestamped filenames: `foxhole-map-2024-01-15T10-30-00-000Z.svg`
-- Latest map: `latest.svg`
+- **E-paper SVG**: `foxhole-map-epaper-2024-01-15T10-30-00-000Z.svg`
+- **Latest e-paper**: `latest-epaper.svg`
+- **HTML Dashboard**: Automatically posted to Terminus server
+- **Database**: Town control data in `data/towns.db`
 
 ## Map Features
 
-The generated SVG includes:
-- **Regions**: All 40+ Foxhole hexagonal regions
-- **Sub-regions**: Voronoi-based sub-regions with accurate coloring
-- **Team Control**: Color-coded Colonial (green) vs Warden (blue) territories
-- **Victory Points**: Towns, keeps, and relic bases that determine war outcome
-- **Major Landmarks**: Important locations and geographical features
-- **Legend**: Clear identification of map symbols
-- **Timestamp**: When the map was generated
+The generated e-paper SVG includes:
+- **Regions**: All 40+ Foxhole hexagonal regions with grayscale patterns
+- **Sub-regions**: Voronoi-based sub-regions with accurate team control
+- **Team Control**: Grayscale patterns for Colonial vs Warden territories
+- **Victory Points**: Current count and required total for war outcome
+- **War Information**: War number and duration display
+- **Active Players**: Current player count from Steam Charts
+- **Recent Captures**: Last 48 hours of town captures with timing
+- **E-paper Optimized**: 800x480 resolution with high contrast
 
 ## File Structure
 
@@ -283,15 +359,6 @@ foxhole-svg/
 - **Express.js** web server for API endpoints
 - **SQLite** database for town control tracking
 - **Docker** containerization for easy deployment
-
-## Benefits
-
-1. **Accurate Data**: Real `lastChange` timestamps from actual team changes
-2. **Self-Contained**: No dependency on external WebSocket services
-3. **Persistent**: Data survives container restarts
-4. **Efficient**: Only updates when team control actually changes
-5. **Scalable**: Can run as a background service
-6. **Single Container**: Simple deployment and management
 
 ## Troubleshooting
 

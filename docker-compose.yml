@@ -11,5 +11,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+    env_file:
+      - .env
     restart: unless-stopped
     command: ["node", "src/server-with-tracking.js"]
