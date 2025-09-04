@@ -61,23 +61,6 @@ foxhole-svg Container:
     └── POST /api/generate-svg (save to file)
 ```
 
-### Database Schema
-```sql
-CREATE TABLE towns (
-  id TEXT PRIMARY KEY,           -- Unique town ID
-  iconType TEXT NOT NULL,        -- Town type (TownHall, RelicBase, etc.)
-  x REAL NOT NULL,               -- X coordinate
-  y REAL NOT NULL,               -- Y coordinate
-  region TEXT NOT NULL,          -- Region name
-  currentTeam TEXT NOT NULL,     -- Current controlling team
-  lastTeam TEXT,                 -- Previous team
-  lastChange INTEGER NOT NULL,   -- Timestamp of last team change
-  notes TEXT,                    -- Town name/notes
-  created_at INTEGER,            -- Record creation time
-  updated_at INTEGER             -- Last update time
-);
-```
-
 ### Data Flow
 1. **Data Updater Service** runs every 5 minutes
 2. Fetches dynamic map data from Foxhole API
@@ -104,9 +87,6 @@ make service-logs
 
 # Check health status
 make status
-
-# Show tracking data
-make conquer-status
 ```
 
 ### SVG Generation
@@ -119,9 +99,6 @@ make download
 
 # Quick generation
 make svg
-
-# Web interface
-# Visit http://localhost:3000
 ```
 
 ### Development
@@ -134,9 +111,6 @@ make dev
 
 # Test container build
 make test
-
-# Health check
-make health-check
 ```
 
 ### File Operations
@@ -175,7 +149,7 @@ When running the web server:
 
 ## Usage Examples
 
-### For TRMNL E-Paper Display
+### For E-Paper Display
 
 1. Generate the SVG:
 ```bash
@@ -212,9 +186,6 @@ this.updateInterval = 5 * 60 * 1000; // 5 minutes
 
 ### Database Location
 The SQLite database is stored in `data/towns.db`
-
-### Data Retention
-Old records are automatically cleaned up after 30 days by default.
 
 ### Environment Variables
 - `PORT` - Server port (default: 3000)
@@ -283,15 +254,6 @@ foxhole-svg/
 - **Express.js** web server for API endpoints
 - **SQLite** database for town control tracking
 - **Docker** containerization for easy deployment
-
-## Benefits
-
-1. **Accurate Data**: Real `lastChange` timestamps from actual team changes
-2. **Self-Contained**: No dependency on external WebSocket services
-3. **Persistent**: Data survives container restarts
-4. **Efficient**: Only updates when team control actually changes
-5. **Scalable**: Can run as a background service
-6. **Single Container**: Simple deployment and management
 
 ## Troubleshooting
 
