@@ -1,6 +1,28 @@
 # Foxhole SVG Map Generator
 
-A lightweight Docker container that generates SVG maps of Foxhole with accurate sub-region coloring and alpha channel variation, optimized for e-paper displays.
+A comprehensive Docker container that generates real-time SVG maps of Foxhole war status, optimized for e-paper displays and Terminus servers. This project provides both a web interface for monitoring war progress and automatic posting to your Terminus device.
+
+## What This Project Does
+
+This project creates beautiful, real-time maps of the Foxhole war by:
+
+- **📊 Tracking War Data**: Monitors town control changes every 5 minutes using the official Foxhole API
+- **🗺️ Generating Maps**: Creates high-quality SVG maps with accurate team control visualization
+- **📱 E-Paper Ready**: Optimizes maps for small, grayscale displays with high contrast
+- **🌐 Web Interface**: Provides a live dashboard to monitor war progress and recent captures
+- **📡 Terminus Integration**: Automatically posts updated maps to your Terminus server
+- **⏰ Real-Time Updates**: Shows recent town captures with exact timestamps and locations
+
+## Screenshots
+
+### Terminus Dashboard
+![Foxhole Dashboard Example](imgs/foxhole_dashboard_example.png)
+
+### Web Interface - War Overview
+![Foxhole Web UI - Overview](imgs/foxhole_map_webui_1.png)
+
+### Web Interface - Recent Captures
+![Foxhole Web UI - Recent Captures](imgs/foxhole_map_webui_2.png)
 
 ## Features
 
