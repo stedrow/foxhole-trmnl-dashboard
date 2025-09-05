@@ -1,4 +1,4 @@
-# Foxhole SVG Map Generator
+# Foxhole TRMNL Dashboard
 
 A Docker container that generates real-time SVG maps of Foxhole war status, optimized for e-paper displays and Terminus servers.
 
