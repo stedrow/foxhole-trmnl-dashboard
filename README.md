@@ -10,7 +10,7 @@ This project creates beautiful, real-time maps of the Foxhole war by:
 - **🗺️ Generating Maps**: Creates high-quality SVG maps with accurate team control visualization
 - **📱 E-Paper Ready**: Optimizes maps for small, grayscale displays with high contrast
 - **🌐 Web Interface**: Provides a live dashboard to monitor war progress and recent captures
-- **📡 Terminus Integration**: Automatically posts updated maps to your Terminus server
+- **📡 Terminus Integration**: Automatically posts updated maps to your [Terminus](https://github.com/usetrmnl/byos_hanami) server
 - **⏰ Real-Time Updates**: Shows recent town captures with exact timestamps and locations
 
 ## Screenshots
