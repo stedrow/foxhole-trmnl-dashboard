@@ -83,16 +83,16 @@ class TerminusPoster {
       // Generate HTML wrapper for SVG
       const htmlContent = await this.generateAndSaveHTMLWrapper(svgContent);
 
-      // Create data for HTML upload to Terminus API - using simplified SVG wrapper
-      const data = {
-        image: {
-          content: htmlContent,
-          file_name: `foxhole-epaper-${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")}-${now.getHours().toString().padStart(2, "0")}-${now.getMinutes().toString().padStart(2, "0")}.html`,
-          model_id: 1,
-          label: "Foxhole E-Paper Map",
-          name: "foxhole_epaper_dashboard",
-        },
-      };
+              // Create data for HTML upload to Terminus API - using new schema
+        const data = {
+          screen: {
+            content: htmlContent,
+            file_name: `foxhole-epaper-${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")}-${now.getHours().toString().padStart(2, "0")}-${now.getMinutes().toString().padStart(2, "0")}.png`,
+            model_id: "1",
+            label: "Foxhole E-Paper Map",
+            name: "foxhole_epaper_dashboard",
+          },
+        };
 
       const headers = {
         "Access-Token": DEVICE_API_KEY,
@@ -105,17 +105,17 @@ class TerminusPoster {
         // Update existing screen (PATCH only supports HTML content)
         const updateUrl = `${TERMINUS_URL}/api/screens/${screenId}`;
         console.log(`Updating existing Foxhole screen ${screenId}`);
-        response = await fetch(updateUrl, {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({
-            image: {
-              content: data.image.content,
-              label: data.image.label,
-              name: data.image.name,
-            },
-          }),
-        });
+                  response = await fetch(updateUrl, {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify({
+              screen: {
+                content: data.screen.content,
+                label: data.screen.label,
+                name: data.screen.name,
+              },
+            }),
+          });
       } else {
         // Create new screen
         const screensUrl = `${TERMINUS_URL}/api/screens`;
