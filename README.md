@@ -51,7 +51,7 @@ Visit `http://localhost:3000` to:
 
 ## Features
 
-- **Accurate Sub-region Coloring**: Matches warden.express color logic with proper alpha channels
+- **Accurate Sub-region Coloring**: Recently captured regions are easily identifiable as they appear lighter and get darker over 48 hours
 - **Town Control Tracking**: SQLite database tracks real `lastChange` timestamps
 - **Live Data Updates**: Background service updates every 5 minutes
 - **E-paper Optimized**: High contrast colors and clear typography for small displays
@@ -144,7 +144,3 @@ foxhole-svg/
 - Verify `.env` file has correct `TERMINUS_URL` and `DEVICE_API_KEY`
 - Check Terminus server is accessible
 - Review logs for API errors
-
-## License
-
-Based on the Foxhole Map Annotate project. See original repository for license details.
