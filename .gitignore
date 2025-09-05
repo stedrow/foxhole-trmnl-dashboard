@@ -1,0 +1,13 @@
+# macOS system files
+.DS_Store
+
+# Environment variables
+.env
+
+# Database files
+data/towns.db
+data/*.db
+
+# Output files
+output/
+output/*
