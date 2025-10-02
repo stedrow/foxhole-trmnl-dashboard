@@ -69,8 +69,11 @@ The project automatically posts to your Terminus server whenever fresh Foxhole d
 1. Create `.env` file with your Terminus details:
    ```bash
    TERMINUS_URL=https://your-terminus-server.com
-   DEVICE_API_KEY=your_device_api_key_here
+   TERMINUS_LOGIN=your_email@example.com
+   TERMINUS_PASSWORD=your_password
    ```
+
+   **Note**: For Terminus 0.30.0+, you need to create a user account via the web UI first. The old `DEVICE_API_KEY` authentication method is no longer supported.
 
 2. Start the service - Terminus posting happens automatically!
 
@@ -141,6 +144,6 @@ foxhole-svg/
 - Verify town coordinates match between API and database
 
 ### Terminus Issues
-- Verify `.env` file has correct `TERMINUS_URL` and `DEVICE_API_KEY`
+- Verify `.env` file has correct `TERMINUS_URL`, `TERMINUS_LOGIN`, and `TERMINUS_PASSWORD`
 - Check Terminus server is accessible
 - Review logs for API errors

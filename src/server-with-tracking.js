@@ -395,7 +395,7 @@ app.listen(port, () => {
   );
 
   // Start the Terminus poster service if environment variables are configured
-  if (process.env.TERMINUS_URL && process.env.DEVICE_API_KEY) {
+  if (process.env.TERMINUS_URL && process.env.TERMINUS_LOGIN && process.env.TERMINUS_PASSWORD) {
     console.log("🌐 Starting Terminus poster service...");
     import("./terminus-poster.js")
       .then((module) => {
@@ -417,7 +417,7 @@ app.listen(port, () => {
       });
   } else {
     console.log(
-      "⚠️  Terminus poster service not started - missing TERMINUS_URL or DEVICE_API_KEY",
+      "⚠️  Terminus poster service not started - missing TERMINUS_URL, TERMINUS_LOGIN, or TERMINUS_PASSWORD",
     );
   }
 });
