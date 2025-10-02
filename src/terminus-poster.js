@@ -11,6 +11,7 @@ dotenv.config();
 const TERMINUS_URL = process.env.TERMINUS_URL;
 const TERMINUS_LOGIN = process.env.TERMINUS_LOGIN;
 const TERMINUS_PASSWORD = process.env.TERMINUS_PASSWORD;
+const TERMINUS_BIT_DEPTH = process.env.TERMINUS_BIT_DEPTH || "1";
 
 if (!TERMINUS_URL || !TERMINUS_LOGIN || !TERMINUS_PASSWORD) {
   console.error(
@@ -178,6 +179,7 @@ class TerminusPoster {
           model_id: "1",
           label: "Foxhole E-Paper Map",
           name: "foxhole_epaper_dashboard",
+          bit_depth: parseInt(TERMINUS_BIT_DEPTH),
         },
       };
 
@@ -200,6 +202,7 @@ class TerminusPoster {
               content: data.screen.content,
               label: data.screen.label,
               name: data.screen.name,
+              bit_depth: data.screen.bit_depth,
             },
           }),
         });
