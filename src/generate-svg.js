@@ -2,6 +2,7 @@
 
 import fs from "fs/promises";
 import WarApi from "./warapi.js";
+import logger from "./logger.js";
 
 import TownTracker from "./database.js";
 
@@ -81,7 +82,7 @@ class FoxholeSVGGenerator {
     try {
       this.requiredVictoryTowns = await this.getRequiredVictoryTowns();
     } catch (error) {
-      console.warn(
+      logger.warn(
         "Failed to initialize victory towns, using default 32:",
         error.message,
       );
@@ -97,7 +98,7 @@ class FoxholeSVGGenerator {
       this.conquestStartTime = warData.conquestStartTime;
       this.activePlayers = await this.fetchActivePlayers();
     } catch (error) {
-      console.warn("Failed to initialize war data:", error.message);
+      logger.warn("Failed to initialize war data:", error.message);
       this.warNumber = "?";
       this.conquestStartTime = null;
       this.activePlayers = "N/A";
@@ -106,23 +107,23 @@ class FoxholeSVGGenerator {
 
   // Fetch conquerStatus data from our local tracking system
   async fetchConquerStatus() {
-    console.log("Fetching conquerStatus from local tracking system...");
+    logger.debug("Fetching conquerStatus from local tracking system...");
     this.conquerStatus = this.tracker.getConquerStatus();
-    console.log(
+    logger.debug(
       `Loaded ${Object.keys(this.conquerStatus.features).length} tracked towns`,
     );
     return this.conquerStatus;
   }
 
   async fetchAllMapData() {
-    console.log("Fetching map data from Foxhole API...");
+    logger.debug("Fetching map data from Foxhole API...");
 
     // Fetch conquerStatus data from warden.express
     try {
       await this.fetchConquerStatus();
-      console.log("Successfully fetched conquerStatus data");
+      logger.debug("Successfully fetched conquerStatus data");
     } catch (error) {
-      console.warn(
+      logger.warn(
         "Failed to fetch conquerStatus data, using fallback colors:",
         error.message,
       );
@@ -134,7 +135,7 @@ class FoxholeSVGGenerator {
 
     // Get current war info
     const warInfo = await this.warApi.war();
-    console.log(
+    logger.debug(
       `War ${warInfo.warNumber} - Status: ${warInfo.winner === "NONE" ? "Ongoing" : "Ended"}`,
     );
     this.warNumber = warInfo.warNumber;
@@ -142,7 +143,7 @@ class FoxholeSVGGenerator {
     // Fetch data for all regions
     for (const region of HEX_REGIONS) {
       try {
-        console.log(`Fetching ${region}...`);
+        logger.debug(`Fetching ${region}...`);
         const [dynamicData] = await Promise.all([
           this.warApi.dynamicMap(region),
         ]);
@@ -174,14 +175,20 @@ class FoxholeSVGGenerator {
           voronoiRegions: voronoiRegions,
         });
       } catch (error) {
-        console.warn(`Failed to fetch data for ${region}:`, error.message);
+        logger.warn(`Failed to fetch data for ${region}:`, error.message);
       }
     }
+
+    // After fetching all map data, recalculate required victory towns
+    // accounting for scorched towns
+    this.requiredVictoryTowns = await this.getRequiredVictoryTowns();
+    logger.debug(`Required victory towns set to: ${this.requiredVictoryTowns}`);
   }
 
   generateEpaperSVG() {
-    console.log("Starting e-paper SVG generation...");
-    console.log(`Map data has ${this.mapData.size} regions`);
+    logger.debug("Starting e-paper SVG generation...");
+    logger.debug(`Map data has ${this.mapData.size} regions`);
+    logger.debug(`Using required victory towns: ${this.requiredVictoryTowns}`);
 
     // Calculate bounds from all regions
     const bounds = this.calculateMapBounds();
@@ -266,13 +273,13 @@ class FoxholeSVGGenerator {
     <text x="0" y="20" style="font-family: 'Segoe UI', sans-serif; font-size: 18px; font-weight: bold; fill: #000000;">${this.getColonialVictoryPoints()} / ${this.requiredVictoryTowns || 32}</text>
   </g>
   
-  <!-- War Information - Top Left next to Colonial VP -->
-  <g transform="translate(180, 25)">
+  <!-- War Information - Top Center -->
+  <g transform="translate(170, 25)">
     <text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #000000;">War #${this.warNumber || "?"} - ${this.getWarDuration()}</text>
   </g>
-  
+
   <!-- Active Players - Top Right next to Warden VP -->
-  <g transform="translate(${svgWidth - 200}, 25)">
+  <g transform="translate(${svgWidth - 203}, 25)">
     <text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #000000; text-anchor: end;">Active Players: ${this.activePlayers || "N/A"}</text>
   </g>
   
@@ -284,7 +291,7 @@ class FoxholeSVGGenerator {
 `;
 
     // Generate regions with proper coordinates for e-paper
-    console.log("Generating regions...");
+    logger.debug("Generating regions...");
     let regionCount = 0;
     for (const [regionName, data] of this.mapData) {
       if (data.regionGeometry) {
@@ -304,6 +311,24 @@ class FoxholeSVGGenerator {
 
     // Add recent captures display optimized for e-paper
     svg += this.generateEpaperRecentCapturesDisplay(svgWidth, svgHeight);
+
+    // Add timestamp at the bottom center
+    const timestamp = new Date().toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    svg += `
+  <!-- Last Updated Timestamp -->
+  <g transform="translate(${svgWidth / 2}, ${svgHeight - 6})">
+    <text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 12px; font-weight: bold; fill: #000000; text-anchor: middle;">Updated: ${timestamp}</text>
+  </g>
+`;
 
     svg += "</svg>";
     return svg;
@@ -559,7 +584,7 @@ class FoxholeSVGGenerator {
           });
         }
       } catch (error) {
-        console.warn(
+        logger.warn(
           `Failed to render Voronoi region in ${regionName}:`,
           error.message,
         );
@@ -744,13 +769,50 @@ class FoxholeSVGGenerator {
     return victoryBaseTypes.includes(iconType) && flags & victoryBaseFlag;
   }
 
-  // Get required victory towns from war API
+  // Check if a map item is scorched
+  isScorched(flags) {
+    // Scorched flag: 16 (0x10)
+    const scorchedFlag = 16;
+    return flags & scorchedFlag;
+  }
+
+  // Count scorched victory towns from dynamic map data
+  getScorchedVictoryTowns() {
+    let scorchedCount = 0;
+    for (const [regionName, data] of this.mapData) {
+      if (data.dynamic && data.dynamic.scorchedVictoryTowns) {
+        const regionScorched = data.dynamic.scorchedVictoryTowns;
+        if (regionScorched > 0) {
+          logger.debug(
+            `Region ${regionName} has ${regionScorched} scorched victory town(s)`
+          );
+        }
+        scorchedCount += regionScorched;
+      }
+    }
+    logger.debug(`Total scorched victory towns: ${scorchedCount}`);
+    return scorchedCount;
+  }
+
+  // Get required victory towns from war API, adjusted for scorched towns
   async getRequiredVictoryTowns() {
     try {
       const warData = await this.warApi.war();
-      return warData.requiredVictoryTowns || 32;
+      const baseRequired = warData.requiredVictoryTowns || 32;
+
+      // Count scorched victory towns and subtract from required
+      const scorchedCount = this.getScorchedVictoryTowns();
+      const actualRequired = baseRequired - scorchedCount;
+
+      if (scorchedCount > 0) {
+        logger.debug(
+          `Victory towns required: ${baseRequired} - ${scorchedCount} scorched = ${actualRequired}`
+        );
+      }
+
+      return actualRequired;
     } catch (error) {
-      console.warn(
+      logger.warn(
         "Failed to fetch war data, using default 32:",
         error.message,
       );
@@ -758,10 +820,10 @@ class FoxholeSVGGenerator {
     }
   }
 
-  // Calculate war duration in days
+  // Calculate war duration in days, hours, and minutes
   getWarDuration() {
     if (!this.conquestStartTime) {
-      return "Day 0";
+      return "00d 00h 00m";
     }
 
     const now = Date.now();
@@ -770,7 +832,11 @@ class FoxholeSVGGenerator {
     const warHours = Math.floor(
       (warDurationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
     );
-    return `Day ${warDays} ${warHours}h`;
+    const warMinutes = Math.floor(
+      (warDurationMs % (1000 * 60 * 60)) / (1000 * 60),
+    );
+
+    return `${warDays.toString().padStart(2, '0')}d ${warHours.toString().padStart(2, '0')}h ${warMinutes.toString().padStart(2, '0')}m`;
   }
 
   // Fetch active player count from Steam Charts API
@@ -790,7 +856,7 @@ class FoxholeSVGGenerator {
       }
       return "N/A";
     } catch (error) {
-      console.warn("Failed to fetch Steam player data:", error.message);
+      logger.warn("Failed to fetch Steam player data:", error.message);
       return "N/A";
     }
   }
@@ -1040,6 +1106,8 @@ class FoxholeSVGGenerator {
     if (colonialCaptures.length > 0) {
       svg += `<g transform="translate(10, ${svgHeight - 120})">`;
       svg += `<text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #000000;">Colonial</text>`;
+      // Add separator line
+      svg += `<line x1="0" y1="5" x2="75" y2="5" style="stroke: #000000; stroke-width: 1;"/>`;
 
       colonialCaptures.forEach((capture, index) => {
         const hours = Math.floor(capture.timeSinceCapture / (60 * 60 * 1000));
@@ -1049,7 +1117,7 @@ class FoxholeSVGGenerator {
         const timeText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
         // Compact format for e-paper with better spacing
-        svg += `<text x="0" y="${(index + 1) * 18}" style="font-family: 'Segoe UI', sans-serif; font-size: 11px; fill: #000000;">`;
+        svg += `<text x="0" y="${(index + 1) * 18}" style="font-family: 'Segoe UI', sans-serif; font-size: 10px; font-weight: bold; fill: #000000;">`;
         svg += `${capture.hexName} - ${capture.townName} - ${timeText}`;
         svg += `</text>`;
       });
@@ -1060,6 +1128,8 @@ class FoxholeSVGGenerator {
     if (wardenCaptures.length > 0) {
       svg += `<g transform="translate(${svgWidth - 10}, ${svgHeight - 120})">`;
       svg += `<text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #000000; text-anchor: end;">Warden</text>`;
+      // Add separator line (same width as Colonial side, but right-aligned)
+      svg += `<line x1="-75" y1="5" x2="0" y2="5" style="stroke: #000000; stroke-width: 1;"/>`;
 
       wardenCaptures.forEach((capture, index) => {
         const hours = Math.floor(capture.timeSinceCapture / (60 * 60 * 1000));
@@ -1069,7 +1139,7 @@ class FoxholeSVGGenerator {
         const timeText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
         // Compact format for e-paper, right-justified with better spacing
-        svg += `<text x="0" y="${(index + 1) * 18}" style="font-family: 'Segoe UI', sans-serif; font-size: 11px; fill: #000000; text-anchor: end;">`;
+        svg += `<text x="0" y="${(index + 1) * 18}" style="font-family: 'Segoe UI', sans-serif; font-size: 10px; font-weight: bold; fill: #000000; text-anchor: end;">`;
         svg += `${capture.hexName} - ${capture.townName} - ${timeText}`;
         svg += `</text>`;
       });
@@ -1112,7 +1182,7 @@ class FoxholeSVGGenerator {
   ) {
     // Use exact coordinates from static.json with e-paper scaling
     if (!data.regionGeometry) {
-      console.warn(`No region geometry found for ${regionName}`);
+      logger.warn(`No region geometry found for ${regionName}`);
       return "";
     }
 
@@ -1191,15 +1261,15 @@ class FoxholeSVGGenerator {
       const filename = `/app/output/foxhole-map-epaper-${timestamp}.svg`;
 
       await fs.writeFile(filename, svg);
-      console.log(`E-paper SVG map generated: ${filename}`);
+      logger.info(`E-paper SVG map generated: ${filename}`);
 
       // Also save as latest-epaper.svg for easy access
       await fs.writeFile("/app/output/latest-epaper.svg", svg);
-      console.log("Saved as latest-epaper.svg");
+      logger.info("Saved as latest-epaper.svg");
 
       return filename;
     } catch (error) {
-      console.error("Error generating e-paper SVG:", error);
+      logger.error("Error generating e-paper SVG:", error);
       throw error;
     }
   }
@@ -1211,10 +1281,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   generator
     .generateAndSaveEpaperSVG()
     .then((filename) =>
-      console.log(`✓ E-paper map generated successfully: ${filename}`),
+      logger.info(`✓ E-paper map generated successfully: ${filename}`),
     )
     .catch((error) => {
-      console.error("✗ Generation failed:", error);
+      logger.error("✗ Generation failed:", error);
       process.exit(1);
     });
 }

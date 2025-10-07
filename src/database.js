@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import logger from "./logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -36,7 +37,7 @@ class TownTracker {
       CREATE INDEX IF NOT EXISTS idx_towns_coords ON towns(x, y);
     `);
 
-    console.log("Database initialized");
+    logger.debug("Database initialized");
   }
 
   // Generate a unique ID for a town based on its coordinates and icon type
@@ -54,12 +55,14 @@ class TownTracker {
 
     let lastTeam = null;
     let lastChange = now;
+    let teamChanged = false;
 
     if (currentTown) {
       // If team has changed, update lastTeam and lastChange
       if (currentTown.currentTeam !== team) {
         lastTeam = currentTown.currentTeam;
         lastChange = now;
+        teamChanged = true;
       } else {
         // Team hasn't changed, keep existing values
         lastTeam = currentTown.lastTeam;
@@ -68,7 +71,7 @@ class TownTracker {
     }
 
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO towns 
+      INSERT OR REPLACE INTO towns
       (id, iconType, x, y, region, currentTeam, lastTeam, lastChange, notes, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
@@ -86,11 +89,15 @@ class TownTracker {
       now,
     );
 
-    if (result.changes > 0) {
-      console.log(
-        `Updated town ${townId}: team=${team}, lastChange=${new Date(now).toISOString()}`,
+    if (teamChanged) {
+      logger.info(
+        `Town captured: ${notes || townId} (${region}) ${lastTeam} -> ${team}`,
       );
     }
+
+    logger.debug(
+      `Updated town ${townId}: team=${team}, lastChange=${new Date(now).toISOString()}`,
+    );
 
     return result;
   }
