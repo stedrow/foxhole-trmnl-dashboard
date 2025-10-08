@@ -71,9 +71,15 @@ The project automatically posts to your Terminus server whenever fresh Foxhole d
    TERMINUS_URL=https://your-terminus-server.com
    TERMINUS_LOGIN=your_email@example.com
    TERMINUS_PASSWORD=your_password
+   TERMINUS_BIT_DEPTH=1
    ```
 
    **Note**: For Terminus 0.30.0+, you need to create a user account via the web UI first. The old `DEVICE_API_KEY` authentication method is no longer supported.
+   
+   **Bit Depth Options**:
+   - `1` = Black/white only (optimal for e-paper)
+   - `2` = 4 gray levels
+   - `3` = 8 gray levels
 
 2. Start the service - Terminus posting happens automatically!
 
