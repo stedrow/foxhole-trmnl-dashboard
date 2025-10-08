@@ -72,7 +72,11 @@ class FoxholeSVGGenerator {
     this.requiredVictoryTowns = 32; // Default value
     this.warNumber = null;
     this.conquestStartTime = null;
+    this.conquestEndTime = null;
+    this.resistanceStartTime = null;
+    this.winner = "NONE";
     this.activePlayers = "N/A";
+    this.activeMapsList = []; // List of active maps during resistance
     this.initializeVictoryTowns();
     this.initializeWarData();
   }
@@ -96,13 +100,30 @@ class FoxholeSVGGenerator {
       const warData = await this.warApi.war();
       this.warNumber = warData.warNumber;
       this.conquestStartTime = warData.conquestStartTime;
+      this.conquestEndTime = warData.conquestEndTime;
+      this.resistanceStartTime = warData.resistanceStartTime;
+      this.winner = warData.winner || "NONE";
       this.activePlayers = await this.fetchActivePlayers();
+
+      // Fetch active maps list (for resistance phase)
+      if (this.isResistancePhase()) {
+        this.activeMapsList = await this.warApi.maps();
+        logger.info(`Resistance phase active. ${this.activeMapsList.length} maps available.`);
+      }
     } catch (error) {
       logger.warn("Failed to initialize war data:", error.message);
       this.warNumber = "?";
       this.conquestStartTime = null;
+      this.conquestEndTime = null;
+      this.resistanceStartTime = null;
+      this.winner = "NONE";
       this.activePlayers = "N/A";
     }
+  }
+
+  // Check if currently in resistance phase
+  isResistancePhase() {
+    return this.resistanceStartTime !== null && this.resistanceStartTime > 0;
   }
 
   // Fetch conquerStatus data from our local tracking system
@@ -254,8 +275,14 @@ class FoxholeSVGGenerator {
       }
       .contested-region {
         fill: url(#contestedPattern);
-        stroke: #404040; 
+        stroke: #404040;
         stroke-width: 1;
+      }
+      .inactive-region {
+        fill: #F8F8F8;
+        stroke: #DDDDDD;
+        stroke-width: 0.5;
+        opacity: 0.4;
       }
       /* Town dots removed for cleaner appearance */
       /* Major labels removed for cleaner appearance */
@@ -276,11 +303,13 @@ class FoxholeSVGGenerator {
   <!-- War Information - Top Center -->
   <g transform="translate(170, 25)">
     <text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #000000;">War #${this.warNumber || "?"} - ${this.getWarDuration()}</text>
+    ${this.isResistancePhase() ? `<text x="0" y="18" style="font-family: 'Segoe UI', sans-serif; font-size: 12px; font-weight: bold; fill: #CC0000;">RESISTANCE PHASE - ${this.getResistanceDuration()}</text>` : ''}
   </g>
 
   <!-- Active Players - Top Right next to Warden VP -->
   <g transform="translate(${svgWidth - 203}, 25)">
     <text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #000000; text-anchor: end;">Active Players: ${this.activePlayers || "N/A"}</text>
+    ${this.isResistancePhase() ? `<text x="0" y="18" style="font-family: 'Segoe UI', sans-serif; font-size: 12px; font-weight: bold; fill: #CC0000; text-anchor: end;">Winner: ${this.winner}</text>` : ''}
   </g>
   
   <!-- Warden Victory Points - Top Right -->
@@ -295,8 +324,11 @@ class FoxholeSVGGenerator {
     let regionCount = 0;
     for (const [regionName, data] of this.mapData) {
       if (data.regionGeometry) {
-        // Get region control from dynamic data
-        const regionControl = this.getRegionControl(data.dynamic);
+        // Check if region is active during resistance phase
+        const isActive = !this.isResistancePhase() || this.activeMapsList.includes(regionName);
+
+        // Get region control from dynamic data (or mark as inactive)
+        const regionControl = isActive ? this.getRegionControl(data.dynamic) : "inactive";
         svg += this.generateEpaperRegionWithCoords(
           regionName,
           data,
@@ -800,7 +832,13 @@ class FoxholeSVGGenerator {
       const warData = await this.warApi.war();
       const baseRequired = warData.requiredVictoryTowns || 32;
 
-      // Count scorched victory towns and subtract from required
+      // During resistance phase, always show 32 (scorched towns don't count)
+      if (warData.resistanceStartTime && warData.resistanceStartTime > 0) {
+        logger.debug("Resistance phase: using base required victory towns (32)");
+        return 32;
+      }
+
+      // During conquest phase, count scorched victory towns and subtract from required
       const scorchedCount = this.getScorchedVictoryTowns();
       const actualRequired = baseRequired - scorchedCount;
 
@@ -826,8 +864,9 @@ class FoxholeSVGGenerator {
       return "00d 00h 00m";
     }
 
-    const now = Date.now();
-    const warDurationMs = now - this.conquestStartTime;
+    // During resistance phase, show final conquest duration (not current time)
+    const endTime = this.conquestEndTime || Date.now();
+    const warDurationMs = endTime - this.conquestStartTime;
     const warDays = Math.floor(warDurationMs / (1000 * 60 * 60 * 24));
     const warHours = Math.floor(
       (warDurationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
@@ -837,6 +876,22 @@ class FoxholeSVGGenerator {
     );
 
     return `${warDays.toString().padStart(2, '0')}d ${warHours.toString().padStart(2, '0')}h ${warMinutes.toString().padStart(2, '0')}m`;
+  }
+
+  // Calculate resistance phase duration
+  getResistanceDuration() {
+    if (!this.resistanceStartTime) {
+      return "00h 00m";
+    }
+
+    const now = Date.now();
+    const resistanceDurationMs = now - this.resistanceStartTime;
+    const resistanceHours = Math.floor(resistanceDurationMs / (1000 * 60 * 60));
+    const resistanceMinutes = Math.floor(
+      (resistanceDurationMs % (1000 * 60 * 60)) / (1000 * 60),
+    );
+
+    return `${resistanceHours.toString().padStart(2, '0')}h ${resistanceMinutes.toString().padStart(2, '0')}m`;
   }
 
   // Fetch active player count from Steam Charts API
