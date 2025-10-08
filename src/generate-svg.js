@@ -279,11 +279,11 @@ class FoxholeSVGGenerator {
       <rect width="8" height="8" fill="#B0B0B0"/>
       <circle cx="4" cy="4" r="1" fill="#909090"/>
     </pattern>
-    <pattern id="inactivePattern" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse">
-      <rect width="10" height="10" fill="#FFFFFF"/>
-      <line x1="0" y1="0" x2="10" y2="10" stroke="#999999" stroke-width="1.5"/>
-      <line x1="0" y1="10" x2="10" y2="0" stroke="#999999" stroke-width="1.5"/>
-      <circle cx="5" cy="5" r="1.5" fill="#666666"/>
+    <pattern id="inactivePattern" x="0" y="0" width="15" height="15" patternUnits="userSpaceOnUse">
+      <rect width="15" height="15" fill="#FFFFFF"/>
+      <line x1="0" y1="0" x2="15" y2="15" stroke="#999999" stroke-width="1.5"/>
+      <line x1="0" y1="15" x2="15" y2="0" stroke="#999999" stroke-width="1.5"/>
+      <circle cx="7.5" cy="7.5" r="1.5" fill="#666666"/>
     </pattern>
 
     <style>
