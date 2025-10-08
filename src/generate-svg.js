@@ -255,7 +255,13 @@ class FoxholeSVGGenerator {
       <rect width="8" height="8" fill="#B0B0B0"/>
       <circle cx="4" cy="4" r="1" fill="#909090"/>
     </pattern>
-    
+    <pattern id="inactivePattern" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse">
+      <rect width="10" height="10" fill="#FAFAFA"/>
+      <line x1="0" y1="0" x2="10" y2="10" stroke="#E8E8E8" stroke-width="1.5"/>
+      <line x1="0" y1="10" x2="10" y2="0" stroke="#E8E8E8" stroke-width="1.5"/>
+      <circle cx="5" cy="5" r="1.5" fill="#D8D8D8"/>
+    </pattern>
+
     <style>
       /* Region labels removed for cleaner appearance */
       .colonial-region { 
@@ -279,10 +285,10 @@ class FoxholeSVGGenerator {
         stroke-width: 1;
       }
       .inactive-region {
-        fill: #F8F8F8;
-        stroke: #DDDDDD;
-        stroke-width: 0.5;
-        opacity: 0.4;
+        fill: url(#inactivePattern);
+        stroke: #BBBBBB;
+        stroke-width: 1;
+        stroke-dasharray: 4,3;
       }
       /* Town dots removed for cleaner appearance */
       /* Major labels removed for cleaner appearance */
