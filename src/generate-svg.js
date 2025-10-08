@@ -310,7 +310,7 @@ class FoxholeSVGGenerator {
       }
       .inactive-region {
         fill: url(#inactivePattern);
-        stroke: #BBBBBB;
+        stroke: #666666;
         stroke-width: 1;
       }
       /* Town dots removed for cleaner appearance */
