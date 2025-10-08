@@ -154,33 +154,43 @@ class FoxholeSVGGenerator {
     // Load static coordinate data
     const staticData = await loadStaticData();
 
-    // Get current war info
+    // Get current war info and active maps list
     const warInfo = await this.warApi.war();
     logger.debug(
       `War ${warInfo.warNumber} - Status: ${warInfo.winner === "NONE" ? "Ongoing" : "Ended"}`,
     );
     this.warNumber = warInfo.warNumber;
+    this.conquestStartTime = warInfo.conquestStartTime;
+    this.conquestEndTime = warInfo.conquestEndTime;
+    this.resistanceStartTime = warInfo.resistanceStartTime;
+    this.winner = warInfo.winner || "NONE";
+
+    // Fetch active maps list for resistance phase
+    if (this.isResistancePhase()) {
+      this.activeMapsList = await this.warApi.maps();
+      logger.info(`Resistance phase detected. ${this.activeMapsList.length} active maps.`);
+    }
 
     // Fetch data for all regions
     for (const region of HEX_REGIONS) {
+      // Find static data for this region from the main project's static.json
+      const regionStaticData = staticData.features.filter(
+        (feature) =>
+          feature.properties.region === region || feature.id === region,
+      );
+
+      // Get Voronoi regions for this hex
+      const voronoiRegions = staticData.features.filter(
+        (feature) =>
+          feature.properties.type === "voronoi" &&
+          feature.properties.region === region,
+      );
+
       try {
         logger.debug(`Fetching ${region}...`);
         const [dynamicData] = await Promise.all([
           this.warApi.dynamicMap(region),
         ]);
-
-        // Find static data for this region from the main project's static.json
-        const regionStaticData = staticData.features.filter(
-          (feature) =>
-            feature.properties.region === region || feature.id === region,
-        );
-
-        // Get Voronoi regions for this hex
-        const voronoiRegions = staticData.features.filter(
-          (feature) =>
-            feature.properties.type === "voronoi" &&
-            feature.properties.region === region,
-        );
 
         this.mapData.set(region, {
           static: {
@@ -196,7 +206,21 @@ class FoxholeSVGGenerator {
           voronoiRegions: voronoiRegions,
         });
       } catch (error) {
-        logger.warn(`Failed to fetch data for ${region}:`, error.message);
+        // Region is inactive (404 during resistance phase) - still add it with static data
+        logger.debug(`${region} is inactive, adding with static data only`);
+        this.mapData.set(region, {
+          static: {
+            mapTextItems: regionStaticData.filter(
+              (f) =>
+                f.properties.type === "Major" || f.properties.type === "Minor",
+            ),
+          },
+          dynamic: null,
+          regionGeometry: regionStaticData.find(
+            (f) => f.properties.type === "Region",
+          ),
+          voronoiRegions: voronoiRegions,
+        });
       }
     }
 
@@ -288,7 +312,6 @@ class FoxholeSVGGenerator {
         fill: url(#inactivePattern);
         stroke: #BBBBBB;
         stroke-width: 1;
-        stroke-dasharray: 4,3;
       }
       /* Town dots removed for cleaner appearance */
       /* Major labels removed for cleaner appearance */
@@ -328,6 +351,7 @@ class FoxholeSVGGenerator {
     // Generate regions with proper coordinates for e-paper
     logger.debug("Generating regions...");
     let regionCount = 0;
+    let inactiveCount = 0;
     for (const [regionName, data] of this.mapData) {
       if (data.regionGeometry) {
         // Check if region is active during resistance phase
@@ -335,6 +359,12 @@ class FoxholeSVGGenerator {
 
         // Get region control from dynamic data (or mark as inactive)
         const regionControl = isActive ? this.getRegionControl(data.dynamic) : "inactive";
+
+        if (regionControl === "inactive") {
+          inactiveCount++;
+          logger.debug(`${regionName} marked as inactive`);
+        }
+
         svg += this.generateEpaperRegionWithCoords(
           regionName,
           data,
@@ -346,6 +376,8 @@ class FoxholeSVGGenerator {
         regionCount++;
       }
     }
+    logger.info(`Generated ${regionCount} regions (${inactiveCount} inactive)`);
+
 
     // Add recent captures display optimized for e-paper
     svg += this.generateEpaperRecentCapturesDisplay(svgWidth, svgHeight);
@@ -1270,8 +1302,8 @@ class FoxholeSVGGenerator {
     svg += `
     <polygon points="${pointsString}" class="${regionControl}-region" />`;
 
-    // Add pre-generated Voronoi sub-regions (behind other elements)
-    if (data.voronoiRegions && data.voronoiRegions.length > 0) {
+    // Add pre-generated Voronoi sub-regions (behind other elements) - skip for inactive regions
+    if (regionControl !== "inactive" && data.voronoiRegions && data.voronoiRegions.length > 0) {
       svg += this.renderExistingVoronoiRegions(
         regionName,
         data.voronoiRegions,
