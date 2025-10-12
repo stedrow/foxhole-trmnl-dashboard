@@ -2,6 +2,7 @@
 
 import fs from "fs/promises";
 import WarApi from "./warapi.js";
+import logger from "./logger.js";
 
 import TownTracker from "./database.js";
 
@@ -71,7 +72,11 @@ class FoxholeSVGGenerator {
     this.requiredVictoryTowns = 32; // Default value
     this.warNumber = null;
     this.conquestStartTime = null;
+    this.conquestEndTime = null;
+    this.resistanceStartTime = null;
+    this.winner = "NONE";
     this.activePlayers = "N/A";
+    this.activeMapsList = []; // List of active maps during resistance
     this.initializeVictoryTowns();
     this.initializeWarData();
   }
@@ -81,7 +86,7 @@ class FoxholeSVGGenerator {
     try {
       this.requiredVictoryTowns = await this.getRequiredVictoryTowns();
     } catch (error) {
-      console.warn(
+      logger.warn(
         "Failed to initialize victory towns, using default 32:",
         error.message,
       );
@@ -95,34 +100,51 @@ class FoxholeSVGGenerator {
       const warData = await this.warApi.war();
       this.warNumber = warData.warNumber;
       this.conquestStartTime = warData.conquestStartTime;
+      this.conquestEndTime = warData.conquestEndTime;
+      this.resistanceStartTime = warData.resistanceStartTime;
+      this.winner = warData.winner || "NONE";
       this.activePlayers = await this.fetchActivePlayers();
+
+      // Fetch active maps list (for resistance phase)
+      if (this.isResistancePhase()) {
+        this.activeMapsList = await this.warApi.maps();
+        logger.info(`Resistance phase active. ${this.activeMapsList.length} maps available.`);
+      }
     } catch (error) {
-      console.warn("Failed to initialize war data:", error.message);
+      logger.warn("Failed to initialize war data:", error.message);
       this.warNumber = "?";
       this.conquestStartTime = null;
+      this.conquestEndTime = null;
+      this.resistanceStartTime = null;
+      this.winner = "NONE";
       this.activePlayers = "N/A";
     }
   }
 
+  // Check if currently in resistance phase
+  isResistancePhase() {
+    return this.resistanceStartTime !== null && this.resistanceStartTime > 0;
+  }
+
   // Fetch conquerStatus data from our local tracking system
   async fetchConquerStatus() {
-    console.log("Fetching conquerStatus from local tracking system...");
+    logger.debug("Fetching conquerStatus from local tracking system...");
     this.conquerStatus = this.tracker.getConquerStatus();
-    console.log(
+    logger.debug(
       `Loaded ${Object.keys(this.conquerStatus.features).length} tracked towns`,
     );
     return this.conquerStatus;
   }
 
   async fetchAllMapData() {
-    console.log("Fetching map data from Foxhole API...");
+    logger.debug("Fetching map data from Foxhole API...");
 
     // Fetch conquerStatus data from warden.express
     try {
       await this.fetchConquerStatus();
-      console.log("Successfully fetched conquerStatus data");
+      logger.debug("Successfully fetched conquerStatus data");
     } catch (error) {
-      console.warn(
+      logger.warn(
         "Failed to fetch conquerStatus data, using fallback colors:",
         error.message,
       );
@@ -132,33 +154,43 @@ class FoxholeSVGGenerator {
     // Load static coordinate data
     const staticData = await loadStaticData();
 
-    // Get current war info
+    // Get current war info and active maps list
     const warInfo = await this.warApi.war();
-    console.log(
+    logger.debug(
       `War ${warInfo.warNumber} - Status: ${warInfo.winner === "NONE" ? "Ongoing" : "Ended"}`,
     );
     this.warNumber = warInfo.warNumber;
+    this.conquestStartTime = warInfo.conquestStartTime;
+    this.conquestEndTime = warInfo.conquestEndTime;
+    this.resistanceStartTime = warInfo.resistanceStartTime;
+    this.winner = warInfo.winner || "NONE";
+
+    // Fetch active maps list for resistance phase
+    if (this.isResistancePhase()) {
+      this.activeMapsList = await this.warApi.maps();
+      logger.info(`Resistance phase detected. ${this.activeMapsList.length} active maps.`);
+    }
 
     // Fetch data for all regions
     for (const region of HEX_REGIONS) {
+      // Find static data for this region from the main project's static.json
+      const regionStaticData = staticData.features.filter(
+        (feature) =>
+          feature.properties.region === region || feature.id === region,
+      );
+
+      // Get Voronoi regions for this hex
+      const voronoiRegions = staticData.features.filter(
+        (feature) =>
+          feature.properties.type === "voronoi" &&
+          feature.properties.region === region,
+      );
+
       try {
-        console.log(`Fetching ${region}...`);
+        logger.debug(`Fetching ${region}...`);
         const [dynamicData] = await Promise.all([
           this.warApi.dynamicMap(region),
         ]);
-
-        // Find static data for this region from the main project's static.json
-        const regionStaticData = staticData.features.filter(
-          (feature) =>
-            feature.properties.region === region || feature.id === region,
-        );
-
-        // Get Voronoi regions for this hex
-        const voronoiRegions = staticData.features.filter(
-          (feature) =>
-            feature.properties.type === "voronoi" &&
-            feature.properties.region === region,
-        );
 
         this.mapData.set(region, {
           static: {
@@ -174,14 +206,34 @@ class FoxholeSVGGenerator {
           voronoiRegions: voronoiRegions,
         });
       } catch (error) {
-        console.warn(`Failed to fetch data for ${region}:`, error.message);
+        // Region is inactive (404 during resistance phase) - still add it with static data
+        logger.debug(`${region} is inactive, adding with static data only`);
+        this.mapData.set(region, {
+          static: {
+            mapTextItems: regionStaticData.filter(
+              (f) =>
+                f.properties.type === "Major" || f.properties.type === "Minor",
+            ),
+          },
+          dynamic: null,
+          regionGeometry: regionStaticData.find(
+            (f) => f.properties.type === "Region",
+          ),
+          voronoiRegions: voronoiRegions,
+        });
       }
     }
+
+    // After fetching all map data, recalculate required victory towns
+    // accounting for scorched towns
+    this.requiredVictoryTowns = await this.getRequiredVictoryTowns();
+    logger.debug(`Required victory towns set to: ${this.requiredVictoryTowns}`);
   }
 
   generateEpaperSVG() {
-    console.log("Starting e-paper SVG generation...");
-    console.log(`Map data has ${this.mapData.size} regions`);
+    logger.debug("Starting e-paper SVG generation...");
+    logger.debug(`Map data has ${this.mapData.size} regions`);
+    logger.debug(`Using required victory towns: ${this.requiredVictoryTowns}`);
 
     // Calculate bounds from all regions
     const bounds = this.calculateMapBounds();
@@ -227,7 +279,13 @@ class FoxholeSVGGenerator {
       <rect width="8" height="8" fill="#B0B0B0"/>
       <circle cx="4" cy="4" r="1" fill="#909090"/>
     </pattern>
-    
+    <pattern id="inactivePattern" x="0" y="0" width="15" height="15" patternUnits="userSpaceOnUse">
+      <rect width="15" height="15" fill="#FFFFFF"/>
+      <line x1="0" y1="0" x2="15" y2="15" stroke="#999999" stroke-width="1.5"/>
+      <line x1="0" y1="15" x2="15" y2="0" stroke="#999999" stroke-width="1.5"/>
+      <circle cx="7.5" cy="7.5" r="1.5" fill="#666666"/>
+    </pattern>
+
     <style>
       /* Region labels removed for cleaner appearance */
       .colonial-region { 
@@ -247,7 +305,12 @@ class FoxholeSVGGenerator {
       }
       .contested-region {
         fill: url(#contestedPattern);
-        stroke: #404040; 
+        stroke: #404040;
+        stroke-width: 1;
+      }
+      .inactive-region {
+        fill: url(#inactivePattern);
+        stroke: #666666;
         stroke-width: 1;
       }
       /* Town dots removed for cleaner appearance */
@@ -266,14 +329,16 @@ class FoxholeSVGGenerator {
     <text x="0" y="20" style="font-family: 'Segoe UI', sans-serif; font-size: 18px; font-weight: bold; fill: #000000;">${this.getColonialVictoryPoints()} / ${this.requiredVictoryTowns || 32}</text>
   </g>
   
-  <!-- War Information - Top Left next to Colonial VP -->
-  <g transform="translate(180, 25)">
+  <!-- War Information - Top Center -->
+  <g transform="translate(170, 25)">
     <text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #000000;">War #${this.warNumber || "?"} - ${this.getWarDuration()}</text>
+    ${this.isResistancePhase() ? `<text x="0" y="18" style="font-family: 'Segoe UI', sans-serif; font-size: 12px; font-weight: bold; fill: #CC0000;">RESISTANCE PHASE - ${this.getResistanceDuration()}</text>` : ''}
   </g>
-  
+
   <!-- Active Players - Top Right next to Warden VP -->
-  <g transform="translate(${svgWidth - 200}, 25)">
+  <g transform="translate(${svgWidth - 203}, 25)">
     <text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #000000; text-anchor: end;">Active Players: ${this.activePlayers || "N/A"}</text>
+    ${this.isResistancePhase() ? `<text x="0" y="18" style="font-family: 'Segoe UI', sans-serif; font-size: 12px; font-weight: bold; fill: #CC0000; text-anchor: end;">Winner: ${this.winner}</text>` : ''}
   </g>
   
   <!-- Warden Victory Points - Top Right -->
@@ -284,12 +349,22 @@ class FoxholeSVGGenerator {
 `;
 
     // Generate regions with proper coordinates for e-paper
-    console.log("Generating regions...");
+    logger.debug("Generating regions...");
     let regionCount = 0;
+    let inactiveCount = 0;
     for (const [regionName, data] of this.mapData) {
       if (data.regionGeometry) {
-        // Get region control from dynamic data
-        const regionControl = this.getRegionControl(data.dynamic);
+        // Check if region is active during resistance phase
+        const isActive = !this.isResistancePhase() || this.activeMapsList.includes(regionName);
+
+        // Get region control from dynamic data (or mark as inactive)
+        const regionControl = isActive ? this.getRegionControl(data.dynamic) : "inactive";
+
+        if (regionControl === "inactive") {
+          inactiveCount++;
+          logger.debug(`${regionName} marked as inactive`);
+        }
+
         svg += this.generateEpaperRegionWithCoords(
           regionName,
           data,
@@ -301,9 +376,29 @@ class FoxholeSVGGenerator {
         regionCount++;
       }
     }
+    logger.info(`Generated ${regionCount} regions (${inactiveCount} inactive)`);
+
 
     // Add recent captures display optimized for e-paper
     svg += this.generateEpaperRecentCapturesDisplay(svgWidth, svgHeight);
+
+    // Add timestamp at the bottom center
+    const timestamp = new Date().toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    svg += `
+  <!-- Last Updated Timestamp -->
+  <g transform="translate(${svgWidth / 2}, ${svgHeight - 6})">
+    <text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 12px; font-weight: bold; fill: #000000; text-anchor: middle;">Updated: ${timestamp}</text>
+  </g>
+`;
 
     svg += "</svg>";
     return svg;
@@ -559,7 +654,7 @@ class FoxholeSVGGenerator {
           });
         }
       } catch (error) {
-        console.warn(
+        logger.warn(
           `Failed to render Voronoi region in ${regionName}:`,
           error.message,
         );
@@ -744,13 +839,56 @@ class FoxholeSVGGenerator {
     return victoryBaseTypes.includes(iconType) && flags & victoryBaseFlag;
   }
 
-  // Get required victory towns from war API
+  // Check if a map item is scorched
+  isScorched(flags) {
+    // Scorched flag: 16 (0x10)
+    const scorchedFlag = 16;
+    return flags & scorchedFlag;
+  }
+
+  // Count scorched victory towns from dynamic map data
+  getScorchedVictoryTowns() {
+    let scorchedCount = 0;
+    for (const [regionName, data] of this.mapData) {
+      if (data.dynamic && data.dynamic.scorchedVictoryTowns) {
+        const regionScorched = data.dynamic.scorchedVictoryTowns;
+        if (regionScorched > 0) {
+          logger.debug(
+            `Region ${regionName} has ${regionScorched} scorched victory town(s)`
+          );
+        }
+        scorchedCount += regionScorched;
+      }
+    }
+    logger.debug(`Total scorched victory towns: ${scorchedCount}`);
+    return scorchedCount;
+  }
+
+  // Get required victory towns from war API, adjusted for scorched towns
   async getRequiredVictoryTowns() {
     try {
       const warData = await this.warApi.war();
-      return warData.requiredVictoryTowns || 32;
+      const baseRequired = warData.requiredVictoryTowns || 32;
+
+      // During resistance phase, always show 32 (scorched towns don't count)
+      if (warData.resistanceStartTime && warData.resistanceStartTime > 0) {
+        logger.debug("Resistance phase: using base required victory towns (32)");
+        return 32;
+      }
+
+      // During conquest phase, count scorched victory towns and subtract from required
+      const scorchedCount = this.getScorchedVictoryTowns();
+      const actualRequired = baseRequired - scorchedCount;
+
+      if (scorchedCount > 0) {
+        logger.debug(
+          `Victory towns required: ${baseRequired} - ${scorchedCount} scorched = ${actualRequired}`
+        );
+      }
+
+      return actualRequired;
     } catch (error) {
-      console.warn(
+      logger.warn(
         "Failed to fetch war data, using default 32:",
         error.message,
       );
@@ -758,19 +896,40 @@ class FoxholeSVGGenerator {
     }
   }
 
-  // Calculate war duration in days
+  // Calculate war duration in days, hours, and minutes
   getWarDuration() {
     if (!this.conquestStartTime) {
-      return "Day 0";
+      return "00d 00h 00m";
     }
 
-    const now = Date.now();
-    const warDurationMs = now - this.conquestStartTime;
+    // During resistance phase, show final conquest duration (not current time)
+    const endTime = this.conquestEndTime || Date.now();
+    const warDurationMs = endTime - this.conquestStartTime;
     const warDays = Math.floor(warDurationMs / (1000 * 60 * 60 * 24));
     const warHours = Math.floor(
       (warDurationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
     );
-    return `Day ${warDays} ${warHours}h`;
+    const warMinutes = Math.floor(
+      (warDurationMs % (1000 * 60 * 60)) / (1000 * 60),
+    );
+
+    return `${warDays.toString().padStart(2, '0')}d ${warHours.toString().padStart(2, '0')}h ${warMinutes.toString().padStart(2, '0')}m`;
+  }
+
+  // Calculate resistance phase duration
+  getResistanceDuration() {
+    if (!this.resistanceStartTime) {
+      return "00h 00m";
+    }
+
+    const now = Date.now();
+    const resistanceDurationMs = now - this.resistanceStartTime;
+    const resistanceHours = Math.floor(resistanceDurationMs / (1000 * 60 * 60));
+    const resistanceMinutes = Math.floor(
+      (resistanceDurationMs % (1000 * 60 * 60)) / (1000 * 60),
+    );
+
+    return `${resistanceHours.toString().padStart(2, '0')}h ${resistanceMinutes.toString().padStart(2, '0')}m`;
   }
 
   // Fetch active player count from Steam Charts API
@@ -790,7 +949,7 @@ class FoxholeSVGGenerator {
       }
       return "N/A";
     } catch (error) {
-      console.warn("Failed to fetch Steam player data:", error.message);
+      logger.warn("Failed to fetch Steam player data:", error.message);
       return "N/A";
     }
   }
@@ -1040,6 +1199,8 @@ class FoxholeSVGGenerator {
     if (colonialCaptures.length > 0) {
       svg += `<g transform="translate(10, ${svgHeight - 120})">`;
       svg += `<text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #000000;">Colonial</text>`;
+      // Add separator line
+      svg += `<line x1="0" y1="5" x2="75" y2="5" style="stroke: #000000; stroke-width: 1;"/>`;
 
       colonialCaptures.forEach((capture, index) => {
         const hours = Math.floor(capture.timeSinceCapture / (60 * 60 * 1000));
@@ -1049,7 +1210,7 @@ class FoxholeSVGGenerator {
         const timeText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
         // Compact format for e-paper with better spacing
-        svg += `<text x="0" y="${(index + 1) * 18}" style="font-family: 'Segoe UI', sans-serif; font-size: 11px; fill: #000000;">`;
+        svg += `<text x="0" y="${(index + 1) * 18}" style="font-family: 'Segoe UI', sans-serif; font-size: 10px; font-weight: bold; fill: #000000;">`;
         svg += `${capture.hexName} - ${capture.townName} - ${timeText}`;
         svg += `</text>`;
       });
@@ -1060,6 +1221,8 @@ class FoxholeSVGGenerator {
     if (wardenCaptures.length > 0) {
       svg += `<g transform="translate(${svgWidth - 10}, ${svgHeight - 120})">`;
       svg += `<text x="0" y="0" style="font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #000000; text-anchor: end;">Warden</text>`;
+      // Add separator line (same width as Colonial side, but right-aligned)
+      svg += `<line x1="-75" y1="5" x2="0" y2="5" style="stroke: #000000; stroke-width: 1;"/>`;
 
       wardenCaptures.forEach((capture, index) => {
         const hours = Math.floor(capture.timeSinceCapture / (60 * 60 * 1000));
@@ -1069,7 +1232,7 @@ class FoxholeSVGGenerator {
         const timeText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
         // Compact format for e-paper, right-justified with better spacing
-        svg += `<text x="0" y="${(index + 1) * 18}" style="font-family: 'Segoe UI', sans-serif; font-size: 11px; fill: #000000; text-anchor: end;">`;
+        svg += `<text x="0" y="${(index + 1) * 18}" style="font-family: 'Segoe UI', sans-serif; font-size: 10px; font-weight: bold; fill: #000000; text-anchor: end;">`;
         svg += `${capture.hexName} - ${capture.townName} - ${timeText}`;
         svg += `</text>`;
       });
@@ -1112,7 +1275,7 @@ class FoxholeSVGGenerator {
   ) {
     // Use exact coordinates from static.json with e-paper scaling
     if (!data.regionGeometry) {
-      console.warn(`No region geometry found for ${regionName}`);
+      logger.warn(`No region geometry found for ${regionName}`);
       return "";
     }
 
@@ -1139,8 +1302,8 @@ class FoxholeSVGGenerator {
     svg += `
     <polygon points="${pointsString}" class="${regionControl}-region" />`;
 
-    // Add pre-generated Voronoi sub-regions (behind other elements)
-    if (data.voronoiRegions && data.voronoiRegions.length > 0) {
+    // Add pre-generated Voronoi sub-regions (behind other elements) - skip for inactive regions
+    if (regionControl !== "inactive" && data.voronoiRegions && data.voronoiRegions.length > 0) {
       svg += this.renderExistingVoronoiRegions(
         regionName,
         data.voronoiRegions,
@@ -1191,15 +1354,15 @@ class FoxholeSVGGenerator {
       const filename = `/app/output/foxhole-map-epaper-${timestamp}.svg`;
 
       await fs.writeFile(filename, svg);
-      console.log(`E-paper SVG map generated: ${filename}`);
+      logger.info(`E-paper SVG map generated: ${filename}`);
 
       // Also save as latest-epaper.svg for easy access
       await fs.writeFile("/app/output/latest-epaper.svg", svg);
-      console.log("Saved as latest-epaper.svg");
+      logger.info("Saved as latest-epaper.svg");
 
       return filename;
     } catch (error) {
-      console.error("Error generating e-paper SVG:", error);
+      logger.error("Error generating e-paper SVG:", error);
       throw error;
     }
   }
@@ -1211,10 +1374,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   generator
     .generateAndSaveEpaperSVG()
     .then((filename) =>
-      console.log(`✓ E-paper map generated successfully: ${filename}`),
+      logger.info(`✓ E-paper map generated successfully: ${filename}`),
     )
     .catch((error) => {
-      console.error("✗ Generation failed:", error);
+      logger.error("✗ Generation failed:", error);
       process.exit(1);
     });
 }

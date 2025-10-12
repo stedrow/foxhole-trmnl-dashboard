@@ -1,24 +1,25 @@
 import WarApi from "./warapi.js";
 import TownTracker from "./database.js";
 import fs from "fs/promises";
+import logger from "./logger.js";
 
 class DataUpdater {
   constructor() {
     this.warApi = new WarApi();
     this.tracker = new TownTracker();
     this.isRunning = false;
-    this.updateInterval = 5 * 60 * 1000; // 5 minutes
+    this.updateInterval = 1 * 60 * 1000; // 1 minute
     this.terminusPoster = null; // Will be set by the server
   }
 
   async start() {
     if (this.isRunning) {
-      console.log("Data updater is already running");
+      logger.warn("Data updater is already running");
       return;
     }
 
     this.isRunning = true;
-    console.log("Starting data updater service...");
+    logger.info("Starting data updater service...");
 
     // Do initial update
     await this.updateData();
@@ -40,12 +41,12 @@ class DataUpdater {
       this.intervalId = null;
     }
 
-    console.log("Data updater service stopped");
+    logger.info("Data updater service stopped");
   }
 
   async updateData() {
     try {
-      console.log("Updating town control data...");
+      logger.info("Updating town control data...");
 
       // Load static data from local file (same as SVG generator)
       const staticFile = await fs.readFile("/app/public/static.json", "utf8");
@@ -55,11 +56,13 @@ class DataUpdater {
       );
 
       let totalUpdates = 0;
+      let changedTowns = 0;
 
       // Process each region
       for (const region of regions) {
         try {
           const regionName = region.id;
+          logger.debug(`Processing region: ${regionName}`);
 
           // Get dynamic data for this region
           const dynamicData = await this.warApi.getDynamicMap(regionName);
@@ -90,22 +93,28 @@ class DataUpdater {
             );
 
             if (result.changes > 0) {
-              totalUpdates++;
+              changedTowns++;
+              logger.debug(`Town captured: ${notes} (${regionName}) -> ${team}`);
             }
+            totalUpdates++;
           }
 
           // Small delay to avoid overwhelming the API
           await new Promise((resolve) => setTimeout(resolve, 100));
         } catch (error) {
-          console.error(`Error processing region ${region.id}:`, error.message);
+          logger.error(`Error processing region ${region.id}:`, error.message);
         }
       }
 
-      console.log(`Data update complete. Updated ${totalUpdates} towns.`);
+      if (changedTowns > 0) {
+        logger.info(`Data update complete. ${changedTowns} towns changed (${totalUpdates} total tracked).`);
+      } else {
+        logger.info(`Data update complete. No changes (${totalUpdates} towns tracked).`);
+      }
 
       // If we have a Terminus poster, trigger it to post fresh data
       if (this.terminusPoster) {
-        console.log("🔄 Triggering Terminus poster with fresh data...");
+        logger.info("Updating Terminus display...");
         try {
           // Get the fresh conquer status and pass it to the poster
           const freshConquerStatus = this.getConquerStatus();
@@ -113,11 +122,11 @@ class DataUpdater {
             freshConquerStatus,
           );
         } catch (error) {
-          console.error("Error triggering Terminus poster:", error);
+          logger.error("Error triggering Terminus poster:", error);
         }
       }
     } catch (error) {
-      console.error("Error updating data:", error);
+      logger.error("Error updating data:", error);
     }
   }
 

@@ -3,6 +3,7 @@
 import fs from "fs/promises";
 import FoxholeSVGGenerator from "./generate-svg.js";
 import dotenv from "dotenv";
+import logger from "./logger.js";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -14,15 +15,15 @@ const TERMINUS_PASSWORD = process.env.TERMINUS_PASSWORD;
 const TERMINUS_BIT_DEPTH = process.env.TERMINUS_BIT_DEPTH || "1";
 
 if (!TERMINUS_URL || !TERMINUS_LOGIN || !TERMINUS_PASSWORD) {
-  console.error(
+  logger.error(
     "Missing required environment variables: TERMINUS_URL, TERMINUS_LOGIN, and TERMINUS_PASSWORD",
   );
-  console.error("Please create a .env file with these variables");
-  console.error("");
-  console.error("For Terminus 0.30.0+, you need to:");
-  console.error("1. Create a user account via the web UI at your Terminus URL");
-  console.error("2. Add TERMINUS_LOGIN=your_email and TERMINUS_PASSWORD=your_password to .env");
-  console.error("3. The old DEVICE_API_KEY authentication method is no longer supported");
+  logger.error("Please create a .env file with these variables");
+  logger.error("");
+  logger.error("For Terminus 0.30.0+, you need to:");
+  logger.error("1. Create a user account via the web UI at your Terminus URL");
+  logger.error("2. Add TERMINUS_LOGIN=your_email and TERMINUS_PASSWORD=your_password to .env");
+  logger.error("3. The old DEVICE_API_KEY authentication method is no longer supported");
   process.exit(1);
 }
 
@@ -32,13 +33,25 @@ class TerminusPoster {
     this.screenId = null;
     this.accessToken = null;
     this.refreshToken = null;
+    this.tokenExpiresAt = null;
+    this.tokenRefreshBuffer = 5 * 60 * 1000; // Refresh 5 minutes before expiration
   }
 
   async authenticate() {
-    if (this.accessToken) return this.accessToken;
+    // Check if current token is still valid
+    if (this.accessToken && this.tokenExpiresAt) {
+      const now = Date.now();
+      // If token expires in more than 5 minutes, reuse it
+      if (this.tokenExpiresAt - now > this.tokenRefreshBuffer) {
+        return this.accessToken;
+      }
+      // Token is about to expire, refresh it
+      logger.debug("Token expiring soon, refreshing...");
+      return await this.refreshAccessToken();
+    }
 
     try {
-      console.log("Authenticating with Terminus...");
+      logger.debug("Authenticating with Terminus...");
       const response = await fetch(`${TERMINUS_URL}/login`, {
         method: "POST",
         headers: {
@@ -53,29 +66,34 @@ class TerminusPoster {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("Authentication failed:", response.status, errorText);
+        logger.error("Authentication failed:", response.status, errorText);
         return null;
       }
 
       const data = await response.json();
       this.accessToken = data.access_token;
       this.refreshToken = data.refresh_token;
-      console.log("✅ Authentication successful");
+      // Token expires in 30 minutes by default
+      this.tokenExpiresAt = Date.now() + (30 * 60 * 1000);
+      logger.info("✅ Authentication successful");
       return this.accessToken;
     } catch (error) {
-      console.error("Error during authentication:", error);
+      logger.error("Error during authentication:", error);
       return null;
     }
   }
 
   async refreshAccessToken() {
     if (!this.refreshToken) {
-      console.log("No refresh token available, re-authenticating...");
+      logger.debug("No refresh token available, re-authenticating...");
+      // Clear tokens and re-authenticate
+      this.accessToken = null;
+      this.tokenExpiresAt = null;
       return await this.authenticate();
     }
 
     try {
-      console.log("Refreshing access token...");
+      logger.debug("Refreshing access token...");
       const response = await fetch(`${TERMINUS_URL}/api/jwt`, {
         method: "POST",
         headers: {
@@ -89,17 +107,27 @@ class TerminusPoster {
       });
 
       if (!response.ok) {
-        console.log("Token refresh failed, re-authenticating...");
+        logger.debug("Token refresh failed, re-authenticating...");
+        // Clear tokens and re-authenticate
+        this.accessToken = null;
+        this.refreshToken = null;
+        this.tokenExpiresAt = null;
         return await this.authenticate();
       }
 
       const data = await response.json();
       this.accessToken = data.access_token;
       this.refreshToken = data.refresh_token;
-      console.log("✅ Token refreshed successfully");
+      // Update expiration time for new token (30 minutes)
+      this.tokenExpiresAt = Date.now() + (30 * 60 * 1000);
+      logger.info("✅ Token refreshed successfully");
       return this.accessToken;
     } catch (error) {
-      console.error("Error refreshing token:", error);
+      logger.error("Error refreshing token:", error);
+      // Clear tokens and re-authenticate
+      this.accessToken = null;
+      this.refreshToken = null;
+      this.tokenExpiresAt = null;
       return await this.authenticate();
     }
   }
@@ -121,7 +149,7 @@ class TerminusPoster {
       const response = await fetch(screensUrl, { headers });
 
       if (!response.ok) {
-        console.error(
+        logger.error(
           "Failed to fetch screens:",
           response.status,
           response.statusText,
@@ -131,19 +159,19 @@ class TerminusPoster {
 
       const data = await response.json();
       const screens = data.data || [];
-      console.log(`Found ${screens.length} existing screens`);
+      logger.debug(`Found ${screens.length} existing screens`);
 
       for (const screen of screens) {
         if (screen.name === "foxhole_epaper_dashboard") {
           this.screenId = screen.id;
-          console.log(`Found existing Foxhole screen: ${this.screenId}`);
+          logger.debug(`Found existing Foxhole screen: ${this.screenId}`);
           return this.screenId;
         }
       }
 
       return null;
     } catch (error) {
-      console.error("Error fetching screen ID:", error);
+      logger.error("Error fetching screen ID:", error);
       return null;
     }
   }
@@ -152,7 +180,7 @@ class TerminusPoster {
     try {
       const token = await this.authenticate();
       if (!token) {
-        console.error("❌ Authentication failed, cannot post to Terminus");
+        logger.error("❌ Authentication failed, cannot post to Terminus");
         return;
       }
 
@@ -161,10 +189,10 @@ class TerminusPoster {
 
       // Check if we're getting HTML instead of SVG
       if (svgContent.includes("<!DOCTYPE html>")) {
-        console.log(
+        logger.error(
           "❌ ERROR: generateEpaperSVG() returned HTML instead of SVG!",
         );
-        console.log("🔍 This suggests the SVG generation method is broken");
+        logger.error("🔍 This suggests the SVG generation method is broken");
         return;
       }
 
@@ -193,7 +221,7 @@ class TerminusPoster {
       if (screenId) {
         // Update existing screen (PATCH only supports HTML content)
         const updateUrl = `${TERMINUS_URL}/api/screens/${screenId}`;
-        console.log(`Updating existing Foxhole screen ${screenId}`);
+        logger.debug(`Updating existing Foxhole screen ${screenId}`);
         response = await fetch(updateUrl, {
           method: "PATCH",
           headers,
@@ -209,7 +237,7 @@ class TerminusPoster {
       } else {
         // Create new screen
         const screensUrl = `${TERMINUS_URL}/api/screens`;
-        console.log("Creating new Foxhole screen");
+        logger.debug("Creating new Foxhole screen");
         response = await fetch(screensUrl, {
           method: "POST",
           headers,
@@ -219,40 +247,44 @@ class TerminusPoster {
 
       if (response.ok) {
         const result = await response.json();
-        console.log("✅ Foxhole dashboard published successfully:", result);
+        const screenData = result.data;
+        logger.info(
+          `✅ Dashboard published (${screenData.width}x${screenData.height}, ${Math.round(screenData.size / 1024)}KB)`
+        );
+        logger.debug("Full response:", result);
 
         // If this was a new screen, save the ID
         if (!screenId && result.data && result.data.id) {
           this.screenId = result.data.id;
-          console.log(`Saved new screen ID: ${this.screenId}`);
+          logger.debug(`Saved new screen ID: ${this.screenId}`);
         }
       } else {
         const errorText = await response.text();
-        console.error(
+        logger.error(
           "❌ Error publishing Foxhole dashboard:",
           response.status,
           errorText,
         );
-        
+
         // If it's an authentication error, try to refresh the token
         if (response.status === 401) {
-          console.log("🔄 Authentication error, trying to refresh token...");
+          logger.info("🔄 Authentication error, trying to refresh token...");
           const newToken = await this.refreshAccessToken();
           if (newToken) {
-            console.log("🔄 Retrying with refreshed token...");
+            logger.info("🔄 Retrying with refreshed token...");
             // Retry the request with the new token
             return await this.postToTerminus(svgContent);
           }
         }
       }
     } catch (error) {
-      console.error("Error posting to Terminus:", error);
+      logger.error("Error posting to Terminus:", error);
     }
   }
 
   async generateAndPost() {
     try {
-      console.log("Generating Foxhole e-paper SVG...");
+      logger.info("Generating Foxhole e-paper SVG...");
 
       // Generate the SVG
       await this.generator.fetchAllMapData();
@@ -261,9 +293,9 @@ class TerminusPoster {
       // Convert SVG to PNG and post to Terminus
       await this.postToTerminus(svg);
 
-      console.log("E-paper HTML posted to Terminus successfully");
+      logger.info("E-paper HTML posted to Terminus successfully");
     } catch (error) {
-      console.error("Error in generateAndPost:", error);
+      logger.error("Error in generateAndPost:", error);
     }
   }
 
@@ -318,7 +350,7 @@ class TerminusPoster {
 
       return htmlContent;
     } catch (error) {
-      console.error("❌ HTML wrapper generation failed:", error);
+      logger.error("❌ HTML wrapper generation failed:", error);
       throw error;
     }
   }
@@ -336,32 +368,32 @@ class TerminusPoster {
       try {
         svg = this.generator.generateEpaperSVG();
       } catch (error) {
-        console.error("SVG generation failed:", error);
+        logger.error("SVG generation failed:", error);
         throw error;
       }
 
       // Post SVG to Terminus
       await this.postToTerminus(svg);
     } catch (error) {
-      console.error("Error in generateAndPostWithFreshData:", error);
+      logger.error("Error in generateAndPostWithFreshData:", error);
     }
   }
 
   async start() {
-    console.log("Starting Terminus poster service...");
+    logger.info("Starting Terminus poster service...");
 
     // Handle graceful shutdown
     process.on("SIGINT", () => {
-      console.log("Graceful shutdown requested");
+      logger.info("Graceful shutdown requested");
       process.exit(0);
     });
 
     process.on("SIGTERM", () => {
-      console.log("Graceful shutdown requested");
+      logger.info("Graceful shutdown requested");
       process.exit(0);
     });
 
-    console.log(
+    logger.info(
       "Service started. Will post only when data updates. Press Ctrl+C to stop.",
     );
   }
@@ -371,7 +403,7 @@ class TerminusPoster {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const poster = new TerminusPoster();
   poster.start().catch((error) => {
-    console.error("Failed to start service:", error);
+    logger.error("Failed to start service:", error);
     process.exit(1);
   });
 }
