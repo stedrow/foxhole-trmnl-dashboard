@@ -171,6 +171,10 @@ class FoxholeSVGGenerator {
       logger.info(`Resistance phase detected. ${this.activeMapsList.length} active maps.`);
     }
 
+    // Fetch fresh active players count
+    this.activePlayers = await this.fetchActivePlayers();
+    logger.debug(`Active players: ${this.activePlayers}`);
+
     // Fetch data for all regions
     for (const region of HEX_REGIONS) {
       // Find static data for this region from the main project's static.json
