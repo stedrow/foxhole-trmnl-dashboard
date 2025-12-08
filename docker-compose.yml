@@ -1,7 +1,7 @@
 services:
   foxhole-svg:
     build: .
-    image: foxhole-svg
+    image: ghcr.io/stedrow/foxhole-trmnl-dashboard:1.0.1
     container_name: foxhole-svg
     ports:
       - "3000:3000"
